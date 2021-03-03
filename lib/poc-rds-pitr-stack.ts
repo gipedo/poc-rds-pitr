@@ -2,7 +2,7 @@ import * as cdk from "@aws-cdk/core";
 import * as ec2 from "@aws-cdk/aws-ec2";
 import * as rds from "@aws-cdk/aws-rds";
 
-interface PocRdsPitrStackProps extends cdk.StackProps {
+export interface PocRdsPitrStackProps extends cdk.StackProps {
   readonly trustedDbIngress: string;
 }
 
@@ -18,6 +18,7 @@ export class PocRdsPitrStack extends cdk.Stack {
     this.vpc = new ec2.Vpc(this, "RdsVPC", {
       cidr: "10.0.0.0/16",
       maxAzs: 2,
+      natGateways: 0,
     });
 
     this.dbSecret = new rds.DatabaseSecret(this, "BackendDbSecret", {
@@ -48,8 +49,7 @@ export class PocRdsPitrStack extends cdk.Stack {
       securityGroups: [this.dbSg],
       deletionProtection: false, // IMPORTANT: Dangerous, lab only!
       credentials: rds.Credentials.fromSecret(this.dbSecret),
-      allocatedStorage: 10,
-      maxAllocatedStorage: 30,
+      allocatedStorage: 5,
       storageEncrypted: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY, // IMPORTANT: Dangerous, lab only!
       databaseName: cdk.Stack.of(this).stackName,

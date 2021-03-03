@@ -36,7 +36,7 @@ echo 'TRUSTED_INGRESS_DB_CIDR=<your_public_ip>/32' > .env
 # Install the dependencies
 npm i
 # Deploy the infrastructure
-cdk deploy
+npm run cdk -- deploy
 ```
 
 ### Python + Docker
@@ -67,6 +67,7 @@ docker run \
 -e CREDENTIALS_SECRET=<name_of_db_credentials_secret> \
 pitr
 ```
+> Default container size limitation of 10 GB might be reached when cloning bigger databases. Solution for that would be to make a bind volume of  container `/tmp` to host. 
 
 ##### Sample output
 ```shell
