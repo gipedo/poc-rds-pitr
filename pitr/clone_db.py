@@ -23,7 +23,7 @@ def main():
 
     logger.info(f'Starting PITR for {SOURCE_DB_IDENTIFIER}..')
     source_db_network_config = get_db_instance_network_config(SOURCE_DB_IDENTIFIER)
-    pitr_identifier = do_pitr(SOURCE_DB_IDENTIFIER, source_db_network_config)['DBInstanceIdentifier']
+    pitr_identifier = do_pitr(SOURCE_DB_IDENTIFIER, source_db_network_config)
     logger.info(f'PITR instance ({pitr_identifier}) created.')
 
     logger.info('Waiting for PITR instance to become available..')
@@ -58,24 +58,24 @@ def get_db_instance_network_config(db_identifier: str) -> dict:
     """
     client = boto3.client('rds')
 
-    response = client.describe_db_instances(DBInstanceIdentifier=db_identifier)
-    instance = response['DBInstances'][0]
+    instance = client.describe_db_instances(DBInstanceIdentifier=db_identifier)['DBInstances'][0]
+
     return {
         'subnet_group': instance['DBSubnetGroup']['DBSubnetGroupName'],
-        'vpc_security_groups': list(
-            map(lambda x: x['VpcSecurityGroupId'], instance['VpcSecurityGroups'])
-        ),
+        'vpc_security_groups': [
+            x['VpcSecurityGroupId'] for x in instance['VpcSecurityGroups']
+        ],
         'publicly_accessible': instance['PubliclyAccessible']
     }
 
 
-def do_pitr(source_db_identifier: str, network_config: dict) -> dict:
+def do_pitr(source_db_identifier: str, network_config: dict) -> str:
     """
     Function which will start Point-in-Time Recovery instance from given RDS DB instance.
 
     :param source_db_identifier: RDS instance identifier
     :param network_config: relevant network configuration
-    :return: PITR instance details
+    :return: PITR instance identifier
     """
     client = boto3.client('rds')
 
@@ -88,7 +88,7 @@ def do_pitr(source_db_identifier: str, network_config: dict) -> dict:
         VpcSecurityGroupIds=network_config['vpc_security_groups'],
         DBSubnetGroupName=network_config['subnet_group'],
         PubliclyAccessible=network_config['publicly_accessible']
-    )['DBInstance']
+    )['DBInstance']['DBInstanceIdentifier']
 
 
 @backoff.on_exception(backoff.constant, DbUnavailableError, interval=30)
@@ -101,8 +101,7 @@ def check_if_db_available(db_identifier: str) -> None:
     :return:
     """
     client = boto3.client('rds')
-    response = client.describe_db_instances(DBInstanceIdentifier=db_identifier)
-    status = response['DBInstances'][0]['DBInstanceStatus']
+    status = client.describe_db_instances(DBInstanceIdentifier=db_identifier)['DBInstances'][0]['DBInstanceStatus']
 
     if status != 'available':
         err_msg = f'DB in status {status}.'
@@ -118,8 +117,7 @@ def get_db_instance_endpoint(db_identifier: str) -> str:
     """
     client = boto3.client('rds')
 
-    response = client.describe_db_instances(DBInstanceIdentifier=db_identifier)
-    return response['DBInstances'][0]['Endpoint']['Address']
+    return client.describe_db_instances(DBInstanceIdentifier=db_identifier)['DBInstances'][0]['Endpoint']['Address']
 
 
 def get_secret_value(secret_name: str) -> dict:
@@ -130,9 +128,8 @@ def get_secret_value(secret_name: str) -> dict:
     :return: un-serialized value of the secret
     """
     client = boto3.client('secretsmanager')
-    value_str = client.get_secret_value(SecretId=secret_name)['SecretString']
 
-    return json.loads(value_str)
+    return json.loads(client.get_secret_value(SecretId=secret_name)['SecretString'])
 
 
 def run_pg_dump(host: str, database: str, credentials: dict) -> str:
@@ -150,14 +147,12 @@ def run_pg_dump(host: str, database: str, credentials: dict) -> str:
         completed_process = subprocess.run(
             [
                 '/usr/bin/pg_dump',
-                '-h',
-                host,
+                '-h', host,
                 '-U', credentials['username'],
                 '-Fc',
                 '-c',
                 '-O',
-                '--if-exists',
-                database
+                '--if-exists', database
             ],
             stdout=backup,
             env={'PGPASSWORD': credentials['password']})
@@ -184,12 +179,10 @@ def run_pg_restore(host: str, database: str, credentials: dict, backup_path: str
         completed_process = subprocess.run(
             [
                 '/usr/bin/pg_restore',
-                '-h',
-                host,
+                '-h', host,
                 '-U', credentials['username'],
                 '-c',
-                '-d',
-                database
+                '-d', database
             ],
             stdin=backup,
             env={'PGPASSWORD': credentials['password']})
